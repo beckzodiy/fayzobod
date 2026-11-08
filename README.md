@@ -7,6 +7,8 @@ Live 3D simulation of Fayzobod street. https://fayzobod.beckzodiy.com
   follows the same clock (`/api/time`), so everyone sees the same people in the same places.
 - **Every person's POV:** people at home (or visiting) sit around the dastarxon inside their house's living room, with the rest of the household shown.
   👁 POV button, "👁 Ko'zi bilan" in a person's ID card, or the people
-  list. `[` / `]` switch person, `Esc` exits. Links: `#pov-p005`, `#cam-02`, `#rasm`.
+  list. `[` / `]` switch person, `Esc` exits. Links: `#pov-p005`, `#cam-02`, `#rasm`, `#sayr`.
+- **Walk the street yourself:** 🚶 Sayr button. `W`/`S` or `↑`/`↓` move, `A`/`D` strafe,
+  `←`/`→` turn, `Shift` runs, drag to look. On phones use the on-screen arrows. Walls, houses and cars block you.
 
 Deploy: `npx wrangler pages deploy` (static files in `public/`, time endpoint in `functions/`).

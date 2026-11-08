@@ -565,6 +565,31 @@
       border-radius: 8px;
       padding: 5px 10px
     }
+    #walkpad {
+      position: fixed;
+      left: 12px;
+      bottom: 84px;
+      display: none;
+      grid-template-columns: repeat(3, 52px);
+      grid-template-rows: repeat(2, 52px);
+      gap: 6px;
+      z-index: 5;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none
+    }
+    #walkpad button {
+      border: 1px solid var(--line);
+      background: rgba(20, 24, 30, .55);
+      color: #fff;
+      border-radius: 12px;
+      font-size: 20px;
+      touch-action: none;
+      backdrop-filter: blur(6px)
+    }
+    #walkpad button.on {
+      background: rgba(255, 255, 255, .25)
+    }
     #loading {
       position: fixed;
       inset: 0;
@@ -614,6 +639,7 @@
     <div id="camchip" class="gl"><span id="rec">● </span><span id="camname"></span><small id="camsub"></small></div>
     <button id="clock" class="gl"><b id="clk">--:--</b><small id="wxl"></small></button>
   </div>
+  <div id="walkpad"><span></span><button data-k="KeyW" aria-label="Oldinga">▲</button><span></span><button data-k="ArrowLeft" aria-label="Chapga burilish">◀</button><button data-k="KeyS" aria-label="Orqaga">▼</button><button data-k="ArrowRight" aria-label="O'ngga burilish">▶</button></div>
   <div id="povnav" class="gl"><button onclick="window.__povStep(-1)">◀</button><b id="povname"></b><button onclick="window.__povStep(1)">▶</button><button onclick="window.__povExit()" title="Chiqish">×</button></div>
   <div id="idc" class="gl"></div>
   <div id="ticker" class="gl"></div>
@@ -1769,6 +1795,7 @@
     /* ======================================================
        BOSHQARUV: faqat kameralar va panorama nuqtasi
        ====================================================== */
+    const WALK = { x: 0, z: 0, eye: 1.65, yaw: 0, phase: 0, started: 0, keys: new Set() };
     let mode = 'cam', camIdx = 0, yaw = 0, pitch = 0, ir = false, showMap = true;
     const ptrs = new Map(); let pinch0 = 0, fov0 = 60, downX = 0, downY = 0, moved = 0;
     const $ = id => document.getElementById(id);
@@ -1776,22 +1803,24 @@
     function setView(m, idx) {
       mode = m; closeSheets();
       if (mode === 'pov') { povId = idx; camIdx = -1; } else { camIdx = idx ?? -1; povId = null; }
-      CAMS.forEach(c => c.model.visible = true);
+      CAMS.forEach(c => c.model.visible = true); camera.rotation.order = mode === 'walk' ? 'YXZ' : 'XYZ'; WALK.keys.clear();
       pano.visible = (mode === 'pano'); ring.visible = (mode === 'pano'); scene.updateMatrixWorld(true);
       if (mode === 'pano') { camera.position.set(0, 1.6, 0); camera.fov = 72; yaw = -HEADING * D2R; pitch = 0; }
       else if (mode === 'pov') { camera.fov = 72; yaw = 0; pitch = 0; povYawS = null; }
+      else if (mode === 'walk') { camera.fov = 72; if (!WALK.started) { WALK.started = 1; WALK.yaw = -HEADING * D2R; } camera.position.set(WALK.x, WALK.eye, WALK.z); yaw = WALK.yaw; pitch = 0; }
       else { const c = CAMS[idx]; c.model.visible = false; const e = c.head.localToWorld(c.eye.clone()); camera.position.copy(e); camera.fov = c.fov; yaw = 0; pitch = 0; }
       camera.updateProjectionMatrix();
       document.querySelectorAll('#bar button[data-v]').forEach(b => b.classList.toggle('on', b.dataset.v === (mode === 'cam' ? 'c' + idx : mode)));
       $('photo').style.display = mode === 'pano' ? 'block' : 'none';
       const cctv = mode === 'cam';
       $('corners').style.display = cctv ? 'block' : 'none'; $('noise').style.display = cctv ? 'block' : 'none'; $('rec').style.display = cctv ? 'inline' : 'none';
-      $('povnav').style.display = mode === 'pov' ? 'flex' : 'none';
-      try { history.replaceState(null, '', mode === 'cam' ? '#' + CAMS[idx].id.toLowerCase() : mode === 'pov' ? '#pov-' + povId.toLowerCase() : '#rasm'); } catch (e) { }
+      $('povnav').style.display = mode === 'pov' ? 'flex' : 'none'; $('walkpad').style.display = mode === 'walk' ? 'grid' : 'none';
+      try { history.replaceState(null, '', mode === 'cam' ? '#' + CAMS[idx].id.toLowerCase() : mode === 'pov' ? '#pov-' + povId.toLowerCase() : mode === 'walk' ? '#sayr' : '#rasm'); } catch (e) { }
       hudUpdate(true);
     }
     function applyLook() {
       if (mode === 'pano') camera.rotation.set(pitch, yaw, 0);
+      else if (mode === 'walk') { WALK.yaw = yaw; camera.rotation.set(pitch, yaw, 0); }
       else if (mode === 'pov') { }
       else { const c = CAMS[camIdx]; camera.rotation.set(c.pitch0 + pitch, c.yaw0 + yaw, 0); }
     }
@@ -2689,6 +2718,61 @@
       if (povYawS === null) povYawS = th; else { const d = Math.atan2(Math.sin(th - povYawS), Math.cos(th - povYawS)); povYawS += d * Math.min(1, dt * 5); }
       camera.position.set(x, y, z); camera.rotation.set(pitch + pt, povYawS + yaw, 0);
     }
+    /* ---- tomoshabin sayri: WASD / strelkalar bilan xaritada yurish ---- */
+    let COLL = null; const wray = new THREE.Raycaster(), _wo = new THREE.Vector3(), _wd = new THREE.Vector3();
+    function buildColl() {
+      const skip = new Set([sky, pano, ring, selRing, ball]);
+      PEOPLE.forEach(p => { const a = A(p.id); if (a.mesh) skip.add(a.mesh.g); });
+      for (const id in CARS) skip.add(CARS[id].obj);
+      for (const k in ROOMS) skip.add(ROOMS[k].g);
+      COLL = []; const proxyM = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+      const walk = o => {
+        if (skip.has(o)) return;
+        if (o.isMesh && !o.isInstancedMesh) {
+          const m = Array.isArray(o.material) ? o.material[0] : o.material;
+          if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+          const big = o.geometry.boundingSphere.radius * Math.max(o.scale.x, o.scale.z) > 60;
+          if (!big && !(m.transparent && !m.depthWrite)) {
+            if (m.side === THREE.BackSide) { const px = new THREE.Mesh(o.geometry, proxyM); px.visible = false; o.add(px); COLL.push(px); } else COLL.push(o);
+          }
+        }
+        for (const c of o.children) walk(c);
+      };
+      walk(scene); scene.updateMatrixWorld(true);
+    }
+    function wallHit(x, z, dx, dz, d) {
+      _wd.set(dx, 0, dz).normalize(); wray.far = d + 0.3; wray.camera = camera;
+      const cars = Object.values(CARS).map(C => C.obj).filter(o => o.visible && Math.hypot(o.position.x - x, o.position.z - z) < 6);
+      for (const h of [0.5, 1.35]) { _wo.set(x, h, z); wray.set(_wo, _wd); if (wray.intersectObjects(COLL, false).length || (cars.length && wray.intersectObjects(cars, true).some(i => i.object.isMesh && !i.object.isSprite))) return true; }
+      return false;
+    }
+    function walkCam(dt) {
+      if (!COLL) buildColl();
+      const K = WALK.keys, has = (...c) => c.some(k => K.has(k));
+      const turn = (has('ArrowLeft') ? 1 : 0) - (has('ArrowRight') ? 1 : 0); yaw += turn * dt * 1.9;
+      const f = (has('KeyW', 'ArrowUp') ? 1 : 0) - (has('KeyS', 'ArrowDown') ? 1 : 0), st = (has('KeyD') ? 1 : 0) - (has('KeyA') ? 1 : 0);
+      if (f || st) {
+        const sp = (has('ShiftLeft', 'ShiftRight') ? 4.2 : 1.7) * dt / Math.hypot(f, st), sy = Math.sin(yaw), cy = Math.cos(yaw);
+        let dx = (-sy * f + cy * st) * sp, dz = (-cy * f - sy * st) * sp; const d = Math.hypot(dx, dz);
+        if (wallHit(WALK.x, WALK.z, dx, dz, d)) { if (dx && !wallHit(WALK.x, WALK.z, dx, 0, Math.abs(dx))) dz = 0; else if (dz && !wallHit(WALK.x, WALK.z, 0, dz, Math.abs(dz))) dx = 0; else dx = dz = 0; }
+        const nx = WALK.x + dx, nz = WALK.z + dz; if (Math.hypot(nx - 10, nz + 15) < 75) { WALK.x = nx; WALK.z = nz; }
+        WALK.phase += Math.hypot(dx, dz) * 5.5;
+      }
+      WALK.yaw = yaw; camera.position.set(WALK.x, WALK.eye + Math.sin(WALK.phase) * 0.025, WALK.z); camera.rotation.set(pitch, yaw, 0);
+    }
+    const WALK_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
+    addEventListener('keydown', e => {
+      if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+      if (mode !== 'walk') return;
+      if (WALK_CODES.has(e.code)) { WALK.keys.add(e.code); e.preventDefault(); }
+      if (e.key === 'Escape') setView('cam', 0);
+    });
+    addEventListener('keyup', e => WALK.keys.delete(e.code));
+    addEventListener('blur', () => WALK.keys.clear());
+    document.querySelectorAll('#walkpad button').forEach(b => {
+      const k = b.dataset.k, on = e => { e.preventDefault(); WALK.keys.add(k); b.classList.add('on'); }, off = () => { WALK.keys.delete(k); b.classList.remove('on'); };
+      b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+    });
     function povStep(k) { const i = PEOPLE.findIndex(p => p.id === povId); const n = PEOPLE[(i + k + PEOPLE.length) % PEOPLE.length]; setView('pov', n.id); }
     window.__povStep = povStep; window.__povExit = () => setView('cam', 0);
     window.__pov = id => { setView('pov', id || SEL || PEOPLE[0].id); };
@@ -2702,6 +2786,7 @@
     btn('Panorama', 'rasm nuqtasi', 'pano', () => setView('pano'));
     CAMS.forEach((c, i) => btn(c.id.replace('CAM-', 'K'), c.name, 'c' + i, () => setView('cam', i)));
     { const s = document.createElement('div'); s.className = 'sep'; bar.appendChild(s); }
+    btn('🚶 Sayr', 'WASD bilan yurish', 'walk', () => setView('walk'));
     btn('👁 POV', 'odam ko\'zi bilan', 'pov', () => window.__pov(SEL || povId));
     btn('👥 Odamlar', PEOPLE.length + ' kishi', null, () => toggleSheet('people'));
     btn('⚙', 'sozlama', null, () => toggleSheet('settings'));
@@ -2742,6 +2827,7 @@
       $('wxl').textContent = WXT[WX.type].i + ' ' + Math.round(ENV.temp) + '°C · ' + WXT[WX.type].n + ' · jonli';
       if (mode === 'cam') { const c = CAMS[camIdx]; $('camname').textContent = c.id + ' · ' + c.name; $('camsub').textContent = 'Fayzobod ko\'chasi' + (ir ? ' · IK' : ''); }
       else if (mode === 'pov') { const a = A(povId); $('camname').textContent = '👁 ' + a.p.first + ' ' + a.p.last; $('camsub').textContent = povWhere(a); $('povname').textContent = a.p.first; }
+      else if (mode === 'walk') { $('camname').textContent = '🚶 Sayr'; $('camsub').textContent = 'W A S D / ↑ ↓ ← → · Shift — tez · Esc — chiqish'; }
       else { $('camname').textContent = 'Panorama nuqtasi'; $('camsub').textContent = 'Fayzobod ko\'chasi · 1.6 m'; }
     }
     /* mini xarita */
@@ -2769,7 +2855,7 @@
         mg.fillStyle = active ? 'rgba(255,60,50,.35)' : 'rgba(255,255,255,.1)'; mg.beginPath(); mg.moveTo(q[0], q[1]); mg.arc(q[0], q[1], r, th - Math.PI / 2 - fv / 2, th - Math.PI / 2 + fv / 2); mg.closePath(); mg.fill();
         mg.fillStyle = active ? '#ff3b30' : '#fff'; mg.beginPath(); mg.arc(q[0], q[1], 5, 0, 6.28); mg.fill(); c._mq = q;
       });
-      if (mode === 'pov') { const q = mp(camera.position.x, camera.position.z, S), th = -camera.rotation.y; mg.fillStyle = 'rgba(120,220,255,.35)'; mg.beginPath(); mg.moveTo(q[0], q[1]); const fv = camera.fov * D2R * camera.aspect; mg.arc(q[0], q[1], 46, th - Math.PI / 2 - fv / 2, th - Math.PI / 2 + fv / 2); mg.closePath(); mg.fill(); mg.fillStyle = '#7fdcff'; mg.beginPath(); mg.arc(q[0], q[1], 4, 0, 6.28); mg.fill(); }
+      if (mode === 'pov' || mode === 'walk') { const q = mp(camera.position.x, camera.position.z, S), th = -camera.rotation.y; mg.fillStyle = 'rgba(120,220,255,.35)'; mg.beginPath(); mg.moveTo(q[0], q[1]); const fv = camera.fov * D2R * camera.aspect; mg.arc(q[0], q[1], 46, th - Math.PI / 2 - fv / 2, th - Math.PI / 2 + fv / 2); mg.closePath(); mg.fill(); mg.fillStyle = '#7fdcff'; mg.beginPath(); mg.arc(q[0], q[1], 4, 0, 6.28); mg.fill(); }
       if (mode === 'pano') { const th = -yaw; mg.fillStyle = 'rgba(255,204,0,.3)'; mg.beginPath(); mg.moveTo(o[0], o[1]); const fv = camera.fov * D2R * camera.aspect; mg.arc(o[0], o[1], 50, th - Math.PI / 2 - fv / 2, th - Math.PI / 2 + fv / 2); mg.closePath(); mg.fill(); }
       mg.fillStyle = '#fff'; mg.font = 'bold 16px sans-serif'; mg.fillText('N', 240, 16);
     }
@@ -2789,7 +2875,7 @@
     addEventListener('resize', resize); resize();
     const start = (location.hash || '').slice(1);
     const si = CAMS.findIndex(c => c.id.toLowerCase() === start);
-    if (start === 'rasm') setView('pano'); else if (start.startsWith('pov-') && PID[start.slice(4).toUpperCase()]) setView('pov', start.slice(4).toUpperCase()); else setView('cam', si >= 0 ? si : 0);
+    if (start === 'rasm') setView('pano'); else if (start === 'sayr') setView('walk'); else if (start.startsWith('pov-') && PID[start.slice(4).toUpperCase()]) setView('pov', start.slice(4).toUpperCase()); else setView('cam', si >= 0 ? si : 0);
     async function syncClock() {
       if (location.protocol === 'file:') return;
       try { const t0 = Date.now(), r = await fetch('/api/time', { cache: 'no-store' }), t1 = Date.now(); if (r.ok) { const j = await r.json(); if (j && j.t) { CLK_OFF = j.t - (t0 + t1) / 2; return; } } } catch (e) { }
@@ -2826,7 +2912,7 @@
       FF = false;
       drawSim(Math.max(0, Math.min(1, (netNow() - stepN * STEP_MS) / STEP_MS)));
       updateEnv(dtR); updateRain(dtR);
-      if (mode === 'pov') povCam(dtR); else { inRoom = null; roomLight.intensity = 0; if (roomShown.size) clearRoomShown(); if (povHid) { if (povHid.mesh) povHid.mesh.inner.visible = true; povHid = null; } applyLook(); }
+      if (mode === 'pov') povCam(dtR); else if (mode === 'walk') { inRoom = null; roomLight.intensity = 0; if (roomShown.size) clearRoomShown(); if (povHid) { if (povHid.mesh) povHid.mesh.inner.visible = true; povHid = null; } walkCam(dtR); } else { inRoom = null; roomLight.intensity = 0; if (roomShown.size) clearRoomShown(); if (povHid) { if (povHid.mesh) povHid.mesh.inner.visible = true; povHid = null; } applyLook(); }
       sky.position.copy(camera.position); if (inRoom) rain.visible = false;
       if (SEL) { const a = A(SEL); selRing.visible = !!(a.mesh && !a.hidden) && !(mode === 'pov' && povId === SEL); if (selRing.visible) selRing.position.set(a.mesh.g.position.x, 0.03, a.mesh.g.position.z); } else selRing.visible = false;
       const on = (t / 1000 % 1.2) < 0.6; CAMS.forEach(c => c.led.visible = on); $('rec').style.opacity = on ? 1 : 0.3;
