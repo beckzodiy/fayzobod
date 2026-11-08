@@ -11,4 +11,9 @@ Live 3D simulation of Fayzobod street. https://fayzobod.beckzodiy.com
 - **Walk the street yourself:** 🚶 Sayr button. `W`/`S` or `↑`/`↓` move, `A`/`D` strafe,
   `←`/`→` turn, `Shift` runs, drag to look. On phones use the on-screen arrows. Walls, houses and cars block you.
 
+- **Surrounding village:** Fayzobod, Obod and Poytug' mahallas around the street, about 1.8 km across. Streets,
+  mahalla boundaries, cemeteries, school No. 51 and the water tower come from OpenStreetMap
+  (© OpenStreetMap contributors, ODbL); houses, yards and orchards are generated (the same every time). It is split
+  into 160 m chunks that are hidden beyond ~560 m. (0,0) is CAM-01 at 40.907924, 72.199844.
+
 Deploy: `npx wrangler pages deploy` (static files in `public/`, time endpoint in `functions/`).
