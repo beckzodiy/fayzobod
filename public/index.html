@@ -1717,10 +1717,10 @@
        ====================================================== */
     const CAMS = [
       { id: 'CAM-01', name: 'Chorraha ustuni', mount: V3(P1, 5.4), target: new THREE.Vector3(-4, 0.4, 3.5), fov: 74, type: 'bullet' },
-      { id: 'CAM-02', name: '47-uy darvozasi', mount: V3(V2(DZ_W + 0.5, DZ_F - 0.15), 3.0), target: new THREE.Vector3(12, 0.3, 4.6), fov: 66, type: 'dome' },
+      { id: 'CAM-02', name: '47-uy darvozasi', mount: V3(V2(DZ_W + 0.5, DZ_F - 0.6), 3.0), target: new THREE.Vector3(12, 0.3, 4.6), fov: 66, type: 'dome' },
       { id: 'CAM-03', name: 'Ayvon burchagi', mount: V3(add(R2A, V2(0.35, 0.3)), 2.95), target: V3(V2(TIP.x0, 0), 0.6), fov: 70, type: 'bullet' },
       { id: 'CAM-04', name: "Chap ko'cha oxiri", mount: V3(gW(gEA, 2.0, 0.25), 2.6), target: V3(ROAD_A[1], 0.4), fov: 66, type: 'bullet' },
-      { id: 'CAM-05', name: '47-uy hovlisi', mount: V3(I1(244, 1582), 2.2), target: V3(I1(760, 1840), 0.4), fov: 80, type: 'dome' },
+      { id: 'CAM-05', name: '47-uy hovlisi', mount: V3(I1(262, 1592), 2.2), target: V3(I1(760, 1840), 0.4), fov: 80, type: 'dome' },
       { id: 'CAM-06', name: '55-uy hovlisi', mount: V3(add(I2(852, 1772), V2(-0.2, -0.2)), 2.7), target: V3(I2(470, 1640), 0.4), fov: 80, type: 'dome' },
     ];
     const camWhite = M({ color: '#eeeeea', roughness: 0.35 }), camBlack = M({ color: '#0d0d0d', roughness: 0.15, metalness: 0.4 });
@@ -1803,7 +1803,7 @@
     function setView(m, idx) {
       mode = m; closeSheets();
       if (mode === 'pov') { povId = idx; camIdx = -1; } else { camIdx = idx ?? -1; povId = null; }
-      CAMS.forEach(c => c.model.visible = true); camera.rotation.order = mode === 'walk' ? 'YXZ' : 'XYZ'; WALK.keys.clear();
+      CAMS.forEach(c => c.model.visible = true); WALK.keys.clear();
       pano.visible = (mode === 'pano'); ring.visible = (mode === 'pano'); scene.updateMatrixWorld(true);
       if (mode === 'pano') { camera.position.set(0, 1.6, 0); camera.fov = 72; yaw = -HEADING * D2R; pitch = 0; }
       else if (mode === 'pov') { camera.fov = 72; yaw = 0; pitch = 0; povYawS = null; }
